@@ -1,5 +1,7 @@
+
 import React, { useState, useRef } from 'react';
 import { SafeAreaView, View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Alert, Button } from 'react-native';
+import { Linking } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -9,9 +11,11 @@ export default function App() {
   const [imageUri, setImageUri] = useState(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
+  const [qrData, setQrData] = useState(null);
 
   const validarLogin = () => {
     const validUser = 'admin';
@@ -63,6 +67,18 @@ export default function App() {
     setShowCamera(true);
   };
 
+  const abrirQRScanner = async () => {
+    if (!permission?.granted) {
+      const { status } = await requestPermission();
+      if (status !== 'granted') {
+        Alert.alert('Permiso denegado', 'Se necesita acceso a la cámara');
+        return;
+      }
+    }
+    setQrData(null);
+    setShowQRScanner(true);
+  };
+
   const takePhoto = async () => {
     if (cameraRef.current) {
       const result = await cameraRef.current.takePictureAsync();
@@ -79,6 +95,39 @@ export default function App() {
   const descartarFoto = () => {
     setPhoto(null);
     setShowCamera(false);
+  };
+
+  const onBarcodeScanned = ({ type, data }) => {
+    // Solo procesar una vez
+    if (showQRScanner && !qrData) {
+      setQrData(data);
+        Alert.alert(
+          'QR detectado',
+          `Abrir enlace:${data}`,
+          [
+            { text: 'Cancelar', style: 'cancel', onPress: () => setShowQRScanner(false) },
+            {
+              text: 'Abrir',
+              onPress: async () => {
+                try {
+                  const url = data.startsWith('http') ? data : `https://${data}`;
+                  const supported = await Linking.canOpenURL(url);
+                  if (supported) {
+                    await Linking.openURL(url);
+                  } else {
+                    Alert.alert('No se puede abrir', url);
+                  }
+                } catch (e) {
+                  Alert.alert('Error al abrir', String(e));
+                } finally {
+                  setShowQRScanner(false);
+                }
+              },
+            },
+          ]
+        );
+     
+    }
   };
 
   if (showCamera) {
@@ -98,6 +147,23 @@ export default function App() {
             <Button title="Cancelar" onPress={descartarFoto} />
           </>
         )}
+      </View>
+    );
+  }
+
+  if (showQRScanner) {
+    return (
+      <View style={{ flex: 1 }}>
+        <CameraView
+          style={{ flex: 1 }}
+          onBarcodeScanned={onBarcodeScanned}
+          barcodeScannerSettings={{
+            barcodeTypes: ['qr'],
+          }}
+        />
+        <View style={{ padding: 12 }}>
+          <Button title="Cancelar" onPress={() => setShowQRScanner(false)} />
+        </View>
       </View>
     );
   }
@@ -133,6 +199,16 @@ export default function App() {
               style={styles.image}
             />
           </TouchableOpacity>
+          <View style={{ height: 12 }} />
+          <TouchableOpacity style={styles.button} onPress={abrirQRScanner}>
+            <Text style={styles.btnText}>Escanear QR</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, { marginTop: 10 }]} onPress={abrirCamara}>
+            <Text style={styles.btnText}>Abrir Cámara</Text>
+          </TouchableOpacity>
+          {qrData ? (
+            <Text style={{ marginTop: 10 }}>Último QR: {qrData}</Text>
+          ) : null}
         </View>
       )}
     </SafeAreaView>
@@ -183,6 +259,5 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 });
-
 
 
